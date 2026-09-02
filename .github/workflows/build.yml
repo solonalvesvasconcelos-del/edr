@@ -1,7 +1,7 @@
 name: Build APK
 
-# Compila o APK automaticamente na nuvem, sem precisar de Buildozer local.
-# Dispara a cada push, ou manualmente na aba "Actions" do repositorio.
+# Compila o APK direto no runner (sem Action em container).
+# Mais confiavel e com log legivel. Roda a cada push ou manualmente.
 
 on:
   push:
@@ -10,20 +10,41 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 22.04 de proposito: o 24.04 renomeou pacotes que o Buildozer usa.
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout do codigo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compilar APK (debug)
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
-          command: buildozer android debug
-          buildozer_version: stable
+          python-version: '3.11'
+
+      - name: Instalar dependencias de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip autoconf libtool \
+            pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            cmake libffi-dev libssl-dev build-essential ccache
+
+      - name: Instalar Buildozer e Cython
+        run: |
+          python -m pip install --upgrade pip
+          pip install "cython<3.0" buildozer
+
+      - name: Cache do Buildozer (acelera builds seguintes)
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+
+      - name: Compilar APK (debug)
+        run: buildozer android debug
 
       - name: Publicar o APK como artefato
         uses: actions/upload-artifact@v4
         with:
           name: endpoint-home-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
